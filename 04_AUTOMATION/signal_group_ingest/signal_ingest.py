@@ -28,9 +28,9 @@ class Settings:
     retry_interval_seconds: float = 5.0
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls, *, require_group_id: bool = True) -> "Settings":
         group_id = os.getenv("SIGNAL_GROUP_ID", "").strip()
-        if not group_id:
+        if require_group_id and not group_id:
             raise RuntimeError("SIGNAL_GROUP_ID is required")
 
         account = os.getenv("SIGNAL_ACCOUNT", "").strip() or None
@@ -280,7 +280,11 @@ async def deliver_pending(
             response.raise_for_status()
         except Exception as exc:  # network/status errors are retried via outbox
             outbox.mark_failed(message_id, attempts, str(exc))
-            LOG.warning("Downstream delivery failed id=%s attempt=%s", message_id[:12], attempts + 1)
+            LOG.warning(
+                "Downstream delivery failed id=%s attempt=%s",
+                message_id[:12],
+                attempts + 1,
+            )
             continue
 
         outbox.mark_delivered(message_id)
@@ -329,7 +333,11 @@ async def consume_events(
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            LOG.warning("Signal stream disconnected: %s; reconnecting in %.0fs", exc, backoff)
+            LOG.warning(
+                "Signal stream disconnected: %s; reconnecting in %.0fs",
+                exc,
+                backoff,
+            )
             await asyncio.sleep(backoff)
             backoff = min(30.0, backoff * 2.0)
 
@@ -396,7 +404,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     args = parse_args()
-    settings = Settings.from_env()
+    settings = Settings.from_env(require_group_id=not args.list_groups)
 
     if args.list_groups:
         asyncio.run(print_groups(settings))
